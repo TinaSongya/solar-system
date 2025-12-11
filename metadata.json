@@ -1,0 +1,7 @@
+{
+  "name": "Solar Gesture Control",
+  "description": "Interactive 3D Solar System with particle effects, controlled by hand gestures via webcam.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
