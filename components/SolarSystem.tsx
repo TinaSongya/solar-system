@@ -43,6 +43,54 @@ void main() {
 }
 `;
 
+// --- Shader for Sun Halo (Subtle Dust & Twinkle) ---
+const haloVertexShader = `
+uniform float uTime;
+uniform float uZoomScale;
+attribute float aSize;
+attribute float aSpeed;
+attribute float aPhase;
+attribute vec3 aColor;
+
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+
+  // Reduced size multiplier significantly for "dust" look
+  // Was 300.0, now 120.0 to make them look like distant sparkles
+  gl_PointSize = aSize * uZoomScale * (120.0 / -mvPosition.z);
+
+  // Twinkle logic: Sine wave based on time
+  float twinkle = 0.5 + 0.5 * sin(uTime * aSpeed + aPhase);
+  
+  vColor = aColor;
+  vAlpha = twinkle;
+}
+`;
+
+const haloFragmentShader = `
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+  // Circular particle shape
+  vec2 coord = gl_PointCoord - vec2(0.5);
+  float dist = length(coord);
+  
+  if (dist > 0.5) discard;
+  
+  // Sharper falloff for a "point light" look rather than "foggy blob"
+  float strength = 1.0 - (dist * 2.0);
+  strength = pow(strength, 3.0); // Higher power = sharper, smaller core
+
+  // Lower overall opacity (0.6) for subtlety
+  gl_FragColor = vec4(vColor, strength * vAlpha * 0.6);
+}
+`;
+
 const GlowSphere = ({ radius, color, power, opacity = 1.0 }: { radius: number, color: string, power: number, opacity?: number }) => {
     const uniforms = useMemo(() => ({
         uColor: { value: new THREE.Color(color) },
@@ -66,47 +114,79 @@ const GlowSphere = ({ radius, color, power, opacity = 1.0 }: { radius: number, c
     );
 };
 
-// --- Component: Sun Halo (Refined for new Glow) ---
+// --- Component: Sun Halo (Fine Dust Ring) ---
 const SunHalo = () => {
   const ref = useRef<THREE.Points>(null);
   const zoomLevel = useStore(state => state.zoomLevel);
 
-  const { positions, colors } = useMemo(() => {
-    const count = 6000;
+  const count = 5000; // High count for fine dust
+
+  const uniforms = useMemo(() => ({
+      uTime: { value: 0 },
+      uZoomScale: { value: 1.0 }
+  }), []);
+
+  const { positions, colors, sizes, speeds, phases } = useMemo(() => {
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
-    const baseColor = new THREE.Color("#FFCC00"); // Slightly more golden
-    
+    const sizes = new Float32Array(count);
+    const speeds = new Float32Array(count);
+    const phases = new Float32Array(count);
+
+    const color1 = new THREE.Color("#FFD700"); // Gold
+    const color2 = new THREE.Color("#FF8800"); // Orange
+    const color3 = new THREE.Color("#FFFFFF"); // White (sparkle)
+
     for(let i=0; i<count; i++) {
         const angle = Math.random() * Math.PI * 2;
         
-        // Pushed out slightly to sit within the outer glow
-        const r = 7.0 + Math.pow(Math.random(), 2) * 2.5; 
+        // Distribution: Tighter inner ring, fading out
+        // Start from sun surface (~5) out to ~15
+        const r = 5.0 + Math.pow(Math.random(), 1.5) * 10.0;
         
-        positions[i*3] = Math.cos(angle) * r;
-        positions[i*3+1] = Math.sin(angle) * r;
-        positions[i*3+2] = (Math.random() - 0.5) * 0.15; 
+        // Flatter ring (less vertical fog)
+        const y = (Math.random() - 0.5) * 0.6; 
 
-        const intensity = 0.5 + Math.random() * 0.5;
-        colors[i*3] = baseColor.r * intensity;
-        colors[i*3+1] = baseColor.g * intensity;
-        colors[i*3+2] = baseColor.b * intensity;
+        positions[i*3] = Math.cos(angle) * r;
+        positions[i*3+1] = y;
+        positions[i*3+2] = Math.sin(angle) * r;
+
+        // Small sizes for dust effect (0.5 to 2.0 max)
+        sizes[i] = Math.random() * 1.5 + 0.5;
+
+        // Colors
+        const c = Math.random();
+        let finalColor;
+        if (c < 0.6) finalColor = color1;
+        else if (c < 0.8) finalColor = color2;
+        else finalColor = color3;
+
+        colors[i*3] = finalColor.r;
+        colors[i*3+1] = finalColor.g;
+        colors[i*3+2] = finalColor.b;
+
+        // Twinkle params
+        speeds[i] = 2.0 + Math.random() * 4.0; // Faster twinkling for small stars
+        phases[i] = Math.random() * Math.PI * 2;
     }
-    return { positions, colors };
+    return { positions, colors, sizes, speeds, phases };
   }, []);
 
   useFrame((state) => {
       if (ref.current) {
-          ref.current.rotation.z -= 0.0015;
+          ref.current.rotation.y -= 0.0005;
           
-          const time = state.clock.getElapsedTime();
-          const scale = 1 + Math.sin(time * 0.5) * 0.02;
-          
+          const material = ref.current.material as THREE.ShaderMaterial;
+          material.uniforms.uTime.value = state.clock.getElapsedTime();
+
           if (zoomLevel > 1.0) {
-              const scatterScale = 1 + (zoomLevel - 1) * 5;
-              ref.current.scale.setScalar(scale * scatterScale);
+             const scatterScale = 1 + (zoomLevel - 1) * 3;
+             ref.current.scale.setScalar(scatterScale);
+             material.uniforms.uZoomScale.value = 1.0; 
           } else {
-              ref.current.scale.setScalar(scale);
+             ref.current.scale.setScalar(1.0);
+             // Maintain visibility when zoomed out
+             material.uniforms.uZoomScale.value = 1.0;
           }
       }
   });
@@ -115,15 +195,18 @@ const SunHalo = () => {
       <points ref={ref}>
           <bufferGeometry>
               <bufferAttribute attach="attributes-position" count={positions.length/3} array={positions} itemSize={3} />
-              <bufferAttribute attach="attributes-color" count={colors.length/3} array={colors} itemSize={3} />
+              <bufferAttribute attach="attributes-aColor" count={colors.length/3} array={colors} itemSize={3} />
+              <bufferAttribute attach="attributes-aSize" count={sizes.length} array={sizes} itemSize={1} />
+              <bufferAttribute attach="attributes-aSpeed" count={speeds.length} array={speeds} itemSize={1} />
+              <bufferAttribute attach="attributes-aPhase" count={phases.length} array={phases} itemSize={1} />
           </bufferGeometry>
-          <pointsMaterial 
-            size={0.09} 
-            vertexColors 
-            transparent 
-            opacity={0.7} 
-            blending={THREE.AdditiveBlending} 
+          <shaderMaterial 
+            vertexShader={haloVertexShader}
+            fragmentShader={haloFragmentShader}
+            uniforms={uniforms}
+            transparent
             depthWrite={false}
+            blending={THREE.AdditiveBlending}
           />
       </points>
   )
