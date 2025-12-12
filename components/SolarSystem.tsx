@@ -212,6 +212,49 @@ const SunHalo = () => {
   )
 };
 
+// --- Component: Realistic Moon ---
+const RealisticMoon = ({ radius = 0.35, distance = 3.5 }: { radius?: number, distance?: number }) => {
+  const moonRef = useRef<THREE.Mesh>(null);
+  const orbitRef = useRef<THREE.Group>(null);
+  
+  const [colorMap, bumpMap] = useLoader(TextureLoader, [
+    'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/moon_1024.jpg',
+    'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/moon_1024.jpg' // Using standard moon map as bump map works well enough
+  ]);
+
+  useFrame((state) => {
+    const time = state.clock.getElapsedTime();
+    if (moonRef.current) {
+      // Moon rotation (tidal locking roughly modeled by slow rotation)
+      moonRef.current.rotation.y = time * 0.2;
+    }
+    if (orbitRef.current) {
+      // Moon orbit speed around Earth
+      orbitRef.current.rotation.y = time * 0.5; 
+    }
+  });
+
+  return (
+    <group ref={orbitRef}>
+        {/* Moon Orbit Line (Mini) */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[distance - 0.05, distance + 0.05, 64]} />
+            <meshBasicMaterial color="#444" transparent opacity={0.1} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} />
+        </mesh>
+        
+        <mesh ref={moonRef} position={[distance, 0, 0]}>
+            <sphereGeometry args={[radius, 32, 32]} />
+            <meshStandardMaterial 
+                map={colorMap}
+                bumpMap={bumpMap}
+                bumpScale={0.05}
+                roughness={0.8}
+            />
+        </mesh>
+    </group>
+  );
+};
+
 // --- Component: Realistic Earth ---
 const RealisticEarth = ({ radius }: { radius: number }) => {
     const cloudsRef = useRef<THREE.Mesh>(null);
@@ -534,6 +577,30 @@ export const SolarSystem: React.FC = () => {
         state.camera.position.lerp(targetPos, 0.05);
         state.camera.lookAt(lookAtPos);
     }
+    else if (focusTarget === 'MOON') {
+        // Earth Logic
+        const earthAngle = time * 1.0 * 0.2 + 2;
+        const earthDist = 18;
+        const earthX = Math.cos(earthAngle) * earthDist;
+        const earthZ = -Math.sin(earthAngle) * earthDist;
+
+        // Moon Logic (Relative to Earth)
+        const moonAngle = time * 0.5; // Matches RealisticMoon animation
+        const moonDist = 3.5; // Matches RealisticMoon distance
+        const moonX = Math.cos(moonAngle) * moonDist;
+        const moonZ = -Math.sin(moonAngle) * moonDist;
+        
+        // Absolute Moon Position
+        const absMoonX = earthX + moonX;
+        const absMoonZ = earthZ + moonZ;
+
+        // Camera close to Moon
+        const targetPos = new THREE.Vector3(absMoonX + 1, 0.5, absMoonZ + 2);
+        const lookAtPos = new THREE.Vector3(absMoonX, 0, absMoonZ);
+
+        state.camera.position.lerp(targetPos, 0.05);
+        state.camera.lookAt(lookAtPos);
+    }
     else {
         // Standard Solar System View
         let zPos = 60;
@@ -571,7 +638,7 @@ export const SolarSystem: React.FC = () => {
       <Planet distance={10} radius={0.8} color="#A57C1B" speed={1.5} orbitColor="#666" rotationOffset={0} /> 
       <Planet distance={14} radius={1.2} color="#E3BB76" speed={1.2} orbitColor="#666" rotationOffset={1} /> 
       
-      {/* EARTH - Realistic Mode */}
+      {/* EARTH - Realistic Mode + Moon Child */}
       <Planet 
         distance={18} 
         radius={1.3} 
@@ -580,7 +647,9 @@ export const SolarSystem: React.FC = () => {
         orbitColor="#4F4CB0" 
         rotationOffset={2} 
         variant="earth"
-      /> 
+      >
+        <RealisticMoon radius={0.35} distance={3.5} />
+      </Planet> 
       
       <Planet distance={22} radius={1.0} color="#E27B58" speed={0.8} orbitColor="#E27B58" rotationOffset={3} /> 
       <Planet distance={32} radius={2.8} color="#C88B3A" speed={0.5} orbitColor="#C88B3A" rotationOffset={4} /> 

@@ -9,11 +9,11 @@ interface AppState {
   increaseZoom: (amount: number) => void;
   decreaseZoom: (amount: number) => void;
   
-  gestureStatus: 'IDLE' | 'POINT' | 'PINCH' | 'TWO' | 'OPEN';
-  setGestureStatus: (status: 'IDLE' | 'POINT' | 'PINCH' | 'TWO' | 'OPEN') => void;
+  gestureStatus: 'IDLE' | 'POINT' | 'PINCH' | 'TWO' | 'THREE' | 'OPEN';
+  setGestureStatus: (status: 'IDLE' | 'POINT' | 'PINCH' | 'TWO' | 'THREE' | 'OPEN') => void;
 
-  focusTarget: 'NONE' | 'SATURN' | 'EARTH';
-  setFocusTarget: (target: 'NONE' | 'SATURN' | 'EARTH') => void;
+  focusTarget: 'NONE' | 'SATURN' | 'EARTH' | 'MOON';
+  setFocusTarget: (target: 'NONE' | 'SATURN' | 'EARTH' | 'MOON') => void;
 
   saturnRotation: { x: number, y: number };
   setSaturnRotation: (x: number, y: number) => void;

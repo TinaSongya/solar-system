@@ -104,11 +104,10 @@ export const HandTracker: React.FC = () => {
         const PINCH_THRESHOLD = 0.05;
         
         // Safety buffer: To be considered pointing/open, fingers must be this far from pinch position
-        // This prevents "Point" firing while transitioning into/out of a Pinch
         const GESTURE_SAFETY_THRESHOLD = 0.1; 
 
         // 2. Finger States (Extended vs Curled)
-        // Y increases downwards
+        // Y increases downwards (Screen coords: 0 at top, 1 at bottom)
         const isIndexExtended = indexTip.y < indexPip.y;
         const isMiddleExtended = middleTip.y < middlePip.y;
         const isRingExtended = ringTip.y < ringPip.y;
@@ -118,17 +117,51 @@ export const HandTracker: React.FC = () => {
         const isRingCurled = ringTip.y > ringPip.y;
         const isPinkyCurled = pinkyTip.y > pinkyPip.y;
 
-        // Gesture: "Point" (Index Up, Middle Down)
-        // Must clear the safety threshold to avoid accidental trigger during pinch
-        const isPointing = isIndexExtended && isMiddleCurled && isRingCurled && isPinkyCurled && (pinchDist > GESTURE_SAFETY_THRESHOLD);
+        // Gestures Definitions
+        // We removed pinch checks from specific gestures to prioritize shape over thumb position.
+
+        // Gesture: "Three" (Index, Middle, Ring Up, Pinky Down)
+        const isThree = isIndexExtended && isMiddleExtended && isRingExtended && isPinkyCurled;
 
         // Gesture: "Two" / "Peace" (Index Up, Middle Up, others Down)
-        const isTwo = isIndexExtended && isMiddleExtended && isRingCurled && isPinkyCurled && (pinchDist > PINCH_THRESHOLD);
+        const isTwo = isIndexExtended && isMiddleExtended && isRingCurled && isPinkyCurled;
+
+        // Gesture: "Point" (Index Up, Middle Down)
+        const isPointing = isIndexExtended && isMiddleCurled && isRingCurled && isPinkyCurled;
 
         // Gesture: "Open Hand" (All Extended)
-        const isOpenHand = isIndexExtended && isMiddleExtended && isRingExtended && isPinkyExtended && (pinchDist > GESTURE_SAFETY_THRESHOLD);
+        const isOpenHand = isIndexExtended && isMiddleExtended && isRingExtended && isPinkyExtended;
 
-        // Visualize landmarks
+        // State Logic Priority: Specific Shapes > Generic Pinch
+        let detectedGesture: 'IDLE' | 'POINT' | 'PINCH' | 'TWO' | 'THREE' | 'OPEN' = 'IDLE';
+
+        if (isThree) {
+            detectedGesture = 'THREE';
+            setFocusTarget('MOON');
+        } else if (isTwo) {
+            detectedGesture = 'TWO';
+            setFocusTarget('EARTH');
+        } else if (isPointing) {
+            detectedGesture = 'POINT';
+            setFocusTarget('SATURN');
+            const rotY = (indexTip.x - 0.5) * 4.0; 
+            const rotX = (indexTip.y - 0.5) * 4.0;
+            setSaturnRotation(rotX, rotY);
+        } else if (isOpenHand) {
+            detectedGesture = 'OPEN';
+            increaseZoom(0.015);
+        } else if (pinchDist < PINCH_THRESHOLD) {
+            // Only consider it a pinch if it wasn't one of the gestures above
+            detectedGesture = 'PINCH';
+            setFocusTarget('NONE');
+            decreaseZoom(0.015);
+        } else {
+            detectedGesture = 'IDLE';
+        }
+        
+        setGestureStatus(detectedGesture);
+
+        // Visualize landmarks & Feedback
         if (ctx) {
             ctx.fillStyle = '#00FF00';
             for(const point of landmarks) {
@@ -137,10 +170,12 @@ export const HandTracker: React.FC = () => {
                 ctx.fill();
             }
             
-            if (pinchDist < PINCH_THRESHOLD) ctx.strokeStyle = 'red';
-            else if (isPointing) ctx.strokeStyle = 'cyan';
-            else if (isTwo) ctx.strokeStyle = '#4FD0E7';
-            else if (isOpenHand) ctx.strokeStyle = 'yellow';
+            // Color code the skeleton based on detected gesture
+            if (detectedGesture === 'THREE') ctx.strokeStyle = '#CCCCCC'; // Moon/Silver
+            else if (detectedGesture === 'TWO') ctx.strokeStyle = '#4FD0E7';
+            else if (detectedGesture === 'POINT') ctx.strokeStyle = 'cyan';
+            else if (detectedGesture === 'OPEN') ctx.strokeStyle = 'yellow';
+            else if (detectedGesture === 'PINCH') ctx.strokeStyle = 'red';
             else ctx.strokeStyle = 'white';
 
             ctx.lineWidth = 2;
@@ -148,33 +183,6 @@ export const HandTracker: React.FC = () => {
             ctx.moveTo(thumbTip.x * canvas.width, thumbTip.y * canvas.height);
             ctx.lineTo(indexTip.x * canvas.width, indexTip.y * canvas.height);
             ctx.stroke();
-        }
-
-        // --- State Updates ---
-
-        if (pinchDist < PINCH_THRESHOLD) {
-            // Pinch -> Zoom OUT
-            setFocusTarget('NONE');
-            decreaseZoom(0.015);
-            setGestureStatus('PINCH');
-        } else if (isOpenHand) {
-            // Open Hand -> Zoom IN
-            increaseZoom(0.015);
-            setGestureStatus('OPEN');
-        } else if (isTwo) {
-            // Two -> Focus Earth
-            setFocusTarget('EARTH');
-            setGestureStatus('TWO');
-        } else if (isPointing) {
-            // Pointing -> Focus SATURN
-            setFocusTarget('SATURN');
-            setGestureStatus('POINT');
-
-            const rotY = (indexTip.x - 0.5) * 4.0; 
-            const rotX = (indexTip.y - 0.5) * 4.0;
-            setSaturnRotation(rotX, rotY);
-        } else {
-            setGestureStatus('IDLE');
         }
 
       } else {
@@ -219,6 +227,7 @@ export const HandTracker: React.FC = () => {
       <div className="absolute bottom-1 left-1 bg-black/60 px-2 py-0.5 rounded text-[10px] text-white font-mono">
         {gestureStatus === 'POINT' ? 'POINT (SATURN)' : 
          gestureStatus === 'TWO' ? 'PEACE (EARTH)' : 
+         gestureStatus === 'THREE' ? 'THREE (MOON)' : 
          gestureStatus === 'OPEN' ? 'OPEN (ZOOM IN)' :
          gestureStatus === 'PINCH' ? 'PINCH (ZOOM OUT)' :
          gestureStatus}

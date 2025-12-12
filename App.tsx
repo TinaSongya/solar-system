@@ -12,12 +12,14 @@ const UIOverlay = () => {
   let statusText = "Ready";
   if (gestureStatus === 'POINT') statusText = "Controlling Saturn";
   if (gestureStatus === 'TWO') statusText = "Visiting Earth";
+  if (gestureStatus === 'THREE') statusText = "Visiting Moon";
   if (gestureStatus === 'PINCH') statusText = "Zooming Out...";
   if (gestureStatus === 'OPEN') statusText = "Zooming In...";
   
   if (gestureStatus === 'IDLE') {
     if (focusTarget === 'SATURN') statusText = "Locked on Saturn";
     if (focusTarget === 'EARTH') statusText = "Locked on Earth";
+    if (focusTarget === 'MOON') statusText = "Locked on Moon";
   }
   
   if (zoomLevel > 0.85 && focusTarget === 'NONE') statusText = "⚠️ SCATTERING ⚠️";
@@ -59,6 +61,10 @@ const UIOverlay = () => {
             <li className={`flex items-center gap-2 ${gestureStatus === 'TWO' ? 'text-blue-400 font-bold' : ''}`}>
               <span className="text-xl">✌️</span> 
               <span>Sign "2": Focus Earth</span>
+            </li>
+            <li className={`flex items-center gap-2 ${gestureStatus === 'THREE' ? 'text-gray-300 font-bold' : ''}`}>
+              <span className="text-xl">🤟</span> 
+              <span>Sign "3": Focus Moon</span>
             </li>
             <li className={`flex items-center gap-2 ${gestureStatus === 'PINCH' ? 'text-red-400 font-bold' : ''}`}>
               <span className="text-xl">🤏</span> 
