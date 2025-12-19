@@ -9,14 +9,6 @@ export const HandTracker: React.FC = () => {
   
   const { decreaseZoom, increaseZoom, setGestureStatus, gestureStatus, setFocusTarget, setSaturnRotation } = useStore();
 
-  // Helper to detect pinch
-  const getDistance = (p1: any, p2: any) => {
-    return Math.sqrt(
-      Math.pow(p1.x - p2.x, 2) + 
-      Math.pow(p1.y - p2.y, 2)
-    );
-  };
-
   useEffect(() => {
     let handLandmarker: HandLandmarker | null = null;
     let animationFrameId: number;
@@ -82,108 +74,84 @@ export const HandTracker: React.FC = () => {
       const startTimeMs = performance.now();
       const results = handLandmarker.detectForVideo(video, startTimeMs);
 
+      // Clear previous drawings
       ctx?.clearRect(0, 0, canvas.width, canvas.height);
 
       if (results.landmarks && results.landmarks.length > 0) {
         const landmarks = results.landmarks[0];
         
-        // --- Gesture Logic ---
-        
+        // --- Geometry Helpers ---
+        const wrist = landmarks[0];
+
+        // Function to determine if a finger is extended based on distance from wrist
+        // An extended finger's tip is significantly further from the wrist than its PIP joint.
+        const isExtended = (tipIdx: number, pipIdx: number) => {
+             const tip = landmarks[tipIdx];
+             const pip = landmarks[pipIdx];
+             
+             const dTip = (tip.x - wrist.x)**2 + (tip.y - wrist.y)**2;
+             const dPip = (pip.x - wrist.x)**2 + (pip.y - wrist.y)**2;
+             
+             // 1.1 factor acts as a robust threshold (Tip needs to be 10% further out)
+             return dTip > (dPip * 1.1); 
+        };
+
         const thumbTip = landmarks[4];
         const indexTip = landmarks[8];
-        const indexPip = landmarks[6]; // Proximal Interphalangeal Joint
-        const middleTip = landmarks[12];
-        const middlePip = landmarks[10];
-        const ringTip = landmarks[16];
-        const ringPip = landmarks[14];
-        const pinkyTip = landmarks[20];
-        const pinkyPip = landmarks[18];
-
-        // 1. Pinch Detection (Thumb + Index close)
-        const pinchDist = getDistance(thumbTip, indexTip);
-        const PINCH_THRESHOLD = 0.05;
         
-        // Safety buffer: To be considered pointing/open, fingers must be this far from pinch position
-        const GESTURE_SAFETY_THRESHOLD = 0.1; 
+        // 1. Check Finger States
+        const indexOpen = isExtended(8, 6);
+        const middleOpen = isExtended(12, 10);
+        const ringOpen = isExtended(16, 14);
+        const pinkyOpen = isExtended(20, 18);
 
-        // 2. Finger States (Extended vs Curled)
-        // Y increases downwards (Screen coords: 0 at top, 1 at bottom)
-        const isIndexExtended = indexTip.y < indexPip.y;
-        const isMiddleExtended = middleTip.y < middlePip.y;
-        const isRingExtended = ringTip.y < ringPip.y;
-        const isPinkyExtended = pinkyTip.y < pinkyPip.y;
+        // 2. Pinch Detection (Thumb + Index distance)
+        const pinchDist = Math.sqrt((thumbTip.x - indexTip.x)**2 + (thumbTip.y - indexTip.y)**2);
+        const isPinch = pinchDist < 0.05;
 
-        const isMiddleCurled = middleTip.y > middlePip.y;
-        const isRingCurled = ringTip.y > ringPip.y;
-        const isPinkyCurled = pinkyTip.y > pinkyPip.y;
-
-        // Gestures Definitions
-        // We removed pinch checks from specific gestures to prioritize shape over thumb position.
-
-        // Gesture: "Three" (Index, Middle, Ring Up, Pinky Down)
-        const isThree = isIndexExtended && isMiddleExtended && isRingExtended && isPinkyCurled;
-
-        // Gesture: "Two" / "Peace" (Index Up, Middle Up, others Down)
-        const isTwo = isIndexExtended && isMiddleExtended && isRingCurled && isPinkyCurled;
-
-        // Gesture: "Point" (Index Up, Middle Down)
-        const isPointing = isIndexExtended && isMiddleCurled && isRingCurled && isPinkyCurled;
-
-        // Gesture: "Open Hand" (All Extended)
-        const isOpenHand = isIndexExtended && isMiddleExtended && isRingExtended && isPinkyExtended;
-
-        // State Logic Priority: Specific Shapes > Generic Pinch
+        // 3. Gesture Recognition Logic
+        // Priority: Three > Two > Point > Open > Pinch
+        // We use exclusive checks to prevent cross-recognition (e.g., Two being recognized as Point)
+        
         let detectedGesture: 'IDLE' | 'POINT' | 'PINCH' | 'TWO' | 'THREE' | 'OPEN' = 'IDLE';
 
-        if (isThree) {
+        if (indexOpen && middleOpen && ringOpen && !pinkyOpen) {
             detectedGesture = 'THREE';
             setFocusTarget('MOON');
-        } else if (isTwo) {
+        } 
+        else if (indexOpen && middleOpen && !ringOpen && !pinkyOpen) {
             detectedGesture = 'TWO';
             setFocusTarget('EARTH');
-        } else if (isPointing) {
+        } 
+        else if (indexOpen && !middleOpen && !ringOpen && !pinkyOpen) {
             detectedGesture = 'POINT';
             setFocusTarget('SATURN');
+            
+            // Map index tip position to rotation
             const rotY = (indexTip.x - 0.5) * 4.0; 
             const rotX = (indexTip.y - 0.5) * 4.0;
             setSaturnRotation(rotX, rotY);
-        } else if (isOpenHand) {
+        } 
+        else if (indexOpen && middleOpen && ringOpen && pinkyOpen) {
             detectedGesture = 'OPEN';
             increaseZoom(0.015);
-        } else if (pinchDist < PINCH_THRESHOLD) {
-            // Only consider it a pinch if it wasn't one of the gestures above
-            detectedGesture = 'PINCH';
-            setFocusTarget('NONE');
-            decreaseZoom(0.015);
-        } else {
-            detectedGesture = 'IDLE';
+        }
+        else {
+            // Fallback for Pinch
+            // If gestures above are NOT matched (e.g. Index is curled/pinched), check pinch distance
+            if (isPinch) {
+                detectedGesture = 'PINCH';
+                setFocusTarget('NONE');
+                decreaseZoom(0.015);
+            } else {
+                detectedGesture = 'IDLE';
+            }
         }
         
         setGestureStatus(detectedGesture);
 
-        // Visualize landmarks & Feedback
-        if (ctx) {
-            ctx.fillStyle = '#00FF00';
-            for(const point of landmarks) {
-                ctx.beginPath();
-                ctx.arc(point.x * canvas.width, point.y * canvas.height, 3, 0, 2 * Math.PI);
-                ctx.fill();
-            }
-            
-            // Color code the skeleton based on detected gesture
-            if (detectedGesture === 'THREE') ctx.strokeStyle = '#CCCCCC'; // Moon/Silver
-            else if (detectedGesture === 'TWO') ctx.strokeStyle = '#4FD0E7';
-            else if (detectedGesture === 'POINT') ctx.strokeStyle = 'cyan';
-            else if (detectedGesture === 'OPEN') ctx.strokeStyle = 'yellow';
-            else if (detectedGesture === 'PINCH') ctx.strokeStyle = 'red';
-            else ctx.strokeStyle = 'white';
-
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(thumbTip.x * canvas.width, thumbTip.y * canvas.height);
-            ctx.lineTo(indexTip.x * canvas.width, indexTip.y * canvas.height);
-            ctx.stroke();
-        }
+        // --- Visualization removed as requested ---
+        // (No drawing commands here)
 
       } else {
         setGestureStatus('IDLE');

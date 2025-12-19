@@ -4,6 +4,14 @@ import { SolarSystem } from './components/SolarSystem';
 import { HandTracker } from './components/HandTracker';
 import { useStore, MAX_ZOOM, MIN_ZOOM } from './store';
 
+const LoadingScreen = () => (
+  <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#040B28] text-white z-50">
+    <div className="w-16 h-16 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+    <h2 className="text-xl font-light tracking-widest animate-pulse">LOADING COSMIC ASSETS</h2>
+    <p className="text-gray-500 text-sm mt-2 font-mono">Fetching Textures & AI Models...</p>
+  </div>
+);
+
 const UIOverlay = () => {
   const zoomLevel = useStore(state => state.zoomLevel);
   const gestureStatus = useStore(state => state.gestureStatus);
@@ -51,32 +59,10 @@ const UIOverlay = () => {
           </span>
         </div>
         
-        <div className="mt-4 p-4 border border-white/10 bg-black/30 backdrop-blur-md rounded-lg max-w-sm">
-          <p className="uppercase text-xs tracking-widest text-gray-500 mb-2">Controls</p>
-          <ul className="space-y-2">
-            <li className={`flex items-center gap-2 ${gestureStatus === 'POINT' ? 'text-cyan-400 font-bold' : ''}`}>
-              <span className="text-xl">☝️</span> 
-              <span>Point "1": Saturn Lock & Rotate</span>
-            </li>
-            <li className={`flex items-center gap-2 ${gestureStatus === 'TWO' ? 'text-blue-400 font-bold' : ''}`}>
-              <span className="text-xl">✌️</span> 
-              <span>Sign "2": Focus Earth</span>
-            </li>
-            <li className={`flex items-center gap-2 ${gestureStatus === 'THREE' ? 'text-gray-300 font-bold' : ''}`}>
-              <span className="text-xl">🤟</span> 
-              <span>Sign "3": Focus Moon</span>
-            </li>
-            <li className={`flex items-center gap-2 ${gestureStatus === 'PINCH' ? 'text-red-400 font-bold' : ''}`}>
-              <span className="text-xl">🤏</span> 
-              <span>Pinch: Zoom Out</span>
-            </li>
-            <li className={`flex items-center gap-2 ${gestureStatus === 'OPEN' ? 'text-yellow-400 font-bold' : ''}`}>
-              <span className="text-xl">✋</span> 
-              <span>Open: Zoom In</span>
-            </li>
-          </ul>
-          <p className="mt-4 text-xs text-yellow-300 animate-pulse">{statusText}</p>
-        </div>
+        {/* Status Text Display */}
+        <p className="mt-4 text-sm text-yellow-300 animate-pulse font-bold tracking-wide">
+          STATUS: {statusText.toUpperCase()}
+        </p>
       </div>
     </div>
   );
@@ -85,28 +71,28 @@ const UIOverlay = () => {
 export default function App() {
   return (
     <div className="relative w-full h-full bg-black">
-      {/* 3D Scene */}
-      <Canvas 
-        camera={{ position: [0, 20, 60], fov: 45 }}
-        gl={{ antialias: true, toneMappingExposure: 1.2, outputColorSpace: "srgb" }}
-        dpr={[1, 2]}
-      >
-        {/* Rich Cosmic Blue Background */}
-        <color attach="background" args={['#040B28']} />
-        
-        {/* Ambient light needed for texture details on Earth */}
-        <ambientLight intensity={0.15} />
-        
-        <Suspense fallback={null}>
+      <Suspense fallback={<LoadingScreen />}>
+        {/* 3D Scene */}
+        <Canvas 
+          camera={{ position: [0, 20, 60], fov: 45 }}
+          gl={{ antialias: true, toneMappingExposure: 1.2, outputColorSpace: "srgb" }}
+          dpr={[1, 2]}
+        >
+          {/* Rich Cosmic Blue Background */}
+          <color attach="background" args={['#040B28']} />
+          
+          {/* Ambient light needed for texture details on Earth */}
+          <ambientLight intensity={0.15} />
+          
           <SolarSystem />
-        </Suspense>
-      </Canvas>
+        </Canvas>
 
-      {/* UI & Controls */}
-      <UIOverlay />
-      
-      {/* Camera Feed for Gesture Control */}
-      <HandTracker />
+        {/* UI & Controls */}
+        <UIOverlay />
+        
+        {/* Camera Feed for Gesture Control */}
+        <HandTracker />
+      </Suspense>
     </div>
   );
 }
